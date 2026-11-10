@@ -12,10 +12,16 @@ const int READ_RPM_INTERVAL = 1000;
 
 unsigned long startTime = 0;
 
+int speedA = 0;
+int speedB = 0;
+
 float RPM_A = 0;
 float RPM_B = 0;
-volatile long RPM_counterA = 0;
-volatile long RPM_counterB = 0;
+volatile unsigned long RPM_counterA = 0;
+volatile unsigned long RPM_counterB = 0;
+volatile unsigned long pulse_counterA = 0;
+volatile unsigned long pulse_counterB = 0;
+const float CORRECTION_GAIN = 3.0;
 
 void RPM_Calc();
 void goBothForward(int speed);
@@ -42,8 +48,8 @@ void setup() {
 }
 
 void loop() {
-  goBothForward(170);
-  RPM_Calc();
+  goBothForward(190);
+  
 }
 
 void RPM_Calc() {
@@ -69,16 +75,42 @@ void RPM_Calc() {
 }
 
 void goBothForward(int speed) {
-  analogWrite(motor_LB, 0);
-  analogWrite(motor_LF, speed);
-  analogWrite(motor_RB, 0);
-  analogWrite(motor_RF, speed);
+  noInterrupts();
+  long temp1 = pulse_counterA;
+  long temp2 = pulse_counterB;
+
+  
+  
+  interrupts();
+
+  long diff = 0;
+  if(temp1 > temp2) {
+    diff = temp1 - temp2;
+    int correction = diff * CORRECTION_GAIN;
+    speedA = speed - correction;
+    speedB = speed + correction;
+  }else{
+    diff = temp2 - temp1;
+    int correction = diff * CORRECTION_GAIN;
+    speedA = speed + correction;
+    speedB = speed - correction;
+  }
+  if (millis() - startTime > 200) {
+    Serial.println(diff);
+    startTime = millis();
+  }
+  speedA = constrain(speedA, 130, speed);
+  speedB = constrain(speedB, 130, speed);
+  analogWrite(motor_LF, speedA);
+  analogWrite(motor_RF, speedB);
 }
 
 void wheelCounterA() {
   RPM_counterA++;
+  pulse_counterA++;
 }
 
 void wheelCounterB() {
   RPM_counterB++;
+  pulse_counterB++;
 }
