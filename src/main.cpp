@@ -12,10 +12,15 @@ const int READ_RPM_INTERVAL = 1000;
 
 unsigned long startTime = 0;
 
-volatile int RPM_A = 0;
-volatile int RPM_B = 0;
-unsigned long RPM_counterA = 0;
-unsigned long RPM_counterB = 0;
+float RPM_A = 0;
+float RPM_B = 0;
+volatile long RPM_counterA = 0;
+volatile long RPM_counterB = 0;
+
+void RPM_Calc();
+void goBothForward(int speed);
+void wheelCounterA();
+void wheelCounterB();
 
 
 // const int MAX_SPEED = 0;
@@ -43,12 +48,22 @@ void loop() {
 
 void RPM_Calc() {
   if (millis() - startTime > READ_RPM_INTERVAL) {
-    
+    noInterrupts();
 
+    unsigned long temp1 = RPM_counterA;
+    unsigned long temp2 = RPM_counterB;
+
+    RPM_counterA = 0;
+    RPM_counterB = 0;
+
+    interrupts();
+
+    RPM_A = (temp1 / 20.0) * (60000.0 / READ_RPM_INTERVAL);
+    RPM_B = (temp2 / 20.0) * (60000.0 / READ_RPM_INTERVAL);
     Serial.println("RPM 1 ");
-    Serial.println(digitalRead(RPM_1));
+    Serial.println(RPM_A);
     Serial.println("RPM 2 ");
-    Serial.println(digitalRead(RPM_2));
+    Serial.println(RPM_B);
     startTime = millis();
   }
 }
