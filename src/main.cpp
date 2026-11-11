@@ -25,15 +25,18 @@ volatile unsigned long pulse_counterB = 0;
 
 const float WHEEL_DIAMETER = 6; // in cm
 const int PULSES_PER_REVOLUTION = 20; // number of pulses per revolution of the wheel
-const int MIN_SPEED = 130; // minimum speed to prevent stalling
-const int START_SPEED = 150; // speed to start the wheels at
+const int MIN_SPEED_FORWARD = 130; // minimum speed to prevent stalling
+const int START_SPEED_FORWARD = 170;
+const int MIN_SPEED_BACKWARD = 180; // minimum speed to prevent stalling
+const int START_SPEED_BACKWARD = 210; // speed to start the wheels at
 const float TRIM_FORWARD = 0.86;
-const float TRIM_BACKWARD = 0.86;
-const float CORRECTION_GAIN = 0.0;
+const float TRIM_BACKWARD = 1.0;
+const float CORRECTION_GAIN = -1.0;
 const float MAX_CORRECTION = 15.0; // maximum correction to apply to the speed of the faster wheel
 const int CONTROL_INTERVAL = 20; // interval in milliseconds to check and adjust the speed of the wheels
 const int RAMP_PULSES = 15; // number of pulses to ramp up the speed of the wheels
-const int DRIVE_SPEED = 190; // speed to drive the wheels at
+const int DRIVE_SPEED_FORWARD = 190; // speed to drive the wheels at
+const int DRIVE_SPEED_BACKWARD = 210;
 
 bool done = false;
 
@@ -66,9 +69,9 @@ void setup() {
 
 void loop() {
   if(!done){
-    driveStraight(true, 100);
+    driveStraight(true, 400);
     delay(2000);
-    driveStraight(false, 100);
+    driveStraight(false, 400);
     delay(2000);
     done = true;
   }else{
@@ -151,22 +154,43 @@ void driveStraight(bool forward, float distance){
         stopBothMotors();
         return;
       }
-      float base = DRIVE_SPEED;
-      if(average < RAMP_PULSES){
-        base = START_SPEED + (DRIVE_SPEED - START_SPEED) * (average / (float)RAMP_PULSES);
-      }
+      float base_forward = DRIVE_SPEED_FORWARD;
+      float base_backward = DRIVE_SPEED_BACKWARD;
+      if(forward){
+        if(average < RAMP_PULSES){
+          base_forward = START_SPEED_FORWARD + (DRIVE_SPEED_FORWARD - START_SPEED_FORWARD) * (average / (float)RAMP_PULSES);
+        }
 
-      long remaining = targetPulses - average;
+        long remaining = targetPulses - average;
 
-      if (remaining < RAMP_PULSES) {
-        base = MIN_SPEED + (DRIVE_SPEED - MIN_SPEED) * (remaining / (float)RAMP_PULSES);
+        if (remaining < RAMP_PULSES) {
+          base_forward = MIN_SPEED_FORWARD + (DRIVE_SPEED_FORWARD - MIN_SPEED_FORWARD) * (remaining / (float)RAMP_PULSES);
+        }
+      }else{
+        if(average < RAMP_PULSES){
+          base_backward = START_SPEED_BACKWARD + (DRIVE_SPEED_BACKWARD - START_SPEED_BACKWARD) * (average / (float)RAMP_PULSES);
+        }
+
+        long remaining = targetPulses - average;
+
+        if (remaining < RAMP_PULSES) {
+          base_backward = MIN_SPEED_BACKWARD + (DRIVE_SPEED_BACKWARD - MIN_SPEED_BACKWARD) * (remaining / (float)RAMP_PULSES);
+        }
       }
 
       long diff = pulsesA - pulsesB;
       float correction = diff * CORRECTION_GAIN;
       correction = constrain(correction, -MAX_CORRECTION, MAX_CORRECTION);
-      int leftSpeed = base * trim - correction;
-      int rightSpeed = base + correction;
+      int leftSpeed;
+      int rightSpeed;
+      if (forward) {
+        leftSpeed = base_forward * trim - correction;
+        rightSpeed = base_forward + correction;
+      } else {
+        leftSpeed = base_backward * trim - correction;
+        rightSpeed = base_backward + correction;
+      }
+      
       leftSpeed = constrain(leftSpeed, 0, 255);
       rightSpeed = constrain(rightSpeed, 0, 255);
       setMotors(leftSpeed, rightSpeed, forward);
