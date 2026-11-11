@@ -25,7 +25,8 @@ volatile unsigned long RPM_counterA = 0;
 volatile unsigned long RPM_counterB = 0;
 volatile unsigned long pulse_counterA = 0;
 volatile unsigned long pulse_counterB = 0;
-const float CORRECTION_GAIN = 0.0;
+const float CORRECTION_GAIN = 1.0;
+const float LEFT_TRIM = 0.8;
 
 void RPM_Calc();
 void goBothForward(int speed);
@@ -70,15 +71,19 @@ void RPM_Calc() {
 
     RPM_A = (temp1 / 20.0) * (60000.0 / READ_RPM_INTERVAL);
     RPM_B = (temp2 / 20.0) * (60000.0 / READ_RPM_INTERVAL);
+    
+    /*
     Serial.print("RPM 1 ");
     Serial.print(RPM_A);
     Serial.print(" RPM 2 ");
     Serial.println(RPM_B);
+    */
     startTime = millis();
   }
 }
 
 void goBothForward(int speed) {
+  int baseLeft = speed * LEFT_TRIM;
   noInterrupts();
   long temp1 = pulse_counterA;
   long temp2 = pulse_counterB;
@@ -89,18 +94,23 @@ void goBothForward(int speed) {
   if(temp1 > temp2) {
     diff = temp1 - temp2;
     int correction = diff * CORRECTION_GAIN;
-    speedA = speed - correction;
+    speedA = baseLeft - correction;
     speedB = speed + correction;
-  }else if(temp2 > temp1) {
+  }else{
     diff = temp2 - temp1;
     int correction = diff * CORRECTION_GAIN;
-    speedA = speed + correction;
+    speedA = baseLeft + correction;
     speedB = speed - correction;
   }
-  /*if (millis() - startTime > 200) {
+  if (millis() - startTime > 200) {
+    Serial.print("Pulse A: ");
+    Serial.print(temp1);
+    Serial.print(" Pulse B: ");
+    Serial.print(temp2);
+    Serial.print(" Diff: ");
     Serial.println(diff);
     startTime = millis();
-  }*/
+  }
   speedA = constrain(speedA, 130, speed);
   speedB = constrain(speedB, 130, speed);
   analogWrite(motor_LF, speedA);
