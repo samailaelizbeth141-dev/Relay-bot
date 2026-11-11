@@ -9,8 +9,12 @@
 #define RPM_2 2
 
 const int READ_RPM_INTERVAL = 1000;
+const unsigned long WHEEL_A_INTERVAL = 8000;
+const unsigned long WHEEL_B_INTERVAL = 8000;
 
 unsigned long startTime = 0;
+unsigned long startTimeA = 0;
+unsigned long startTimeB = 0;
 
 int speedA = 0;
 int speedB = 0;
@@ -21,7 +25,7 @@ volatile unsigned long RPM_counterA = 0;
 volatile unsigned long RPM_counterB = 0;
 volatile unsigned long pulse_counterA = 0;
 volatile unsigned long pulse_counterB = 0;
-const float CORRECTION_GAIN = 3.0;
+const float CORRECTION_GAIN = 0.0;
 
 void RPM_Calc();
 void goBothForward(int speed);
@@ -49,7 +53,7 @@ void setup() {
 
 void loop() {
   goBothForward(190);
-  
+  RPM_Calc();
 }
 
 void RPM_Calc() {
@@ -66,9 +70,9 @@ void RPM_Calc() {
 
     RPM_A = (temp1 / 20.0) * (60000.0 / READ_RPM_INTERVAL);
     RPM_B = (temp2 / 20.0) * (60000.0 / READ_RPM_INTERVAL);
-    Serial.println("RPM 1 ");
-    Serial.println(RPM_A);
-    Serial.println("RPM 2 ");
+    Serial.print("RPM 1 ");
+    Serial.print(RPM_A);
+    Serial.print(" RPM 2 ");
     Serial.println(RPM_B);
     startTime = millis();
   }
@@ -79,8 +83,6 @@ void goBothForward(int speed) {
   long temp1 = pulse_counterA;
   long temp2 = pulse_counterB;
 
-  
-  
   interrupts();
 
   long diff = 0;
@@ -89,16 +91,16 @@ void goBothForward(int speed) {
     int correction = diff * CORRECTION_GAIN;
     speedA = speed - correction;
     speedB = speed + correction;
-  }else{
+  }else if(temp2 > temp1) {
     diff = temp2 - temp1;
     int correction = diff * CORRECTION_GAIN;
     speedA = speed + correction;
     speedB = speed - correction;
   }
-  if (millis() - startTime > 200) {
+  /*if (millis() - startTime > 200) {
     Serial.println(diff);
     startTime = millis();
-  }
+  }*/
   speedA = constrain(speedA, 130, speed);
   speedB = constrain(speedB, 130, speed);
   analogWrite(motor_LF, speedA);
@@ -106,11 +108,17 @@ void goBothForward(int speed) {
 }
 
 void wheelCounterA() {
-  RPM_counterA++;
-  pulse_counterA++;
+  if (micros() - startTimeA > WHEEL_A_INTERVAL) {
+    startTimeA = micros();
+    pulse_counterA++;
+    RPM_counterA++;
+  }
 }
 
 void wheelCounterB() {
-  RPM_counterB++;
-  pulse_counterB++;
+  if (micros() - startTimeB > WHEEL_B_INTERVAL) {
+    startTimeB = micros();
+    pulse_counterB++;
+    RPM_counterB++;
+  }
 }
