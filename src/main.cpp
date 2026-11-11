@@ -25,13 +25,13 @@ volatile unsigned long pulse_counterB = 0;
 
 const float WHEEL_DIAMETER = 6; // in cm
 const int PULSES_PER_REVOLUTION = 20; // number of pulses per revolution of the wheel
-const int MIN_SPEED_FORWARD = 130; // minimum speed to prevent stalling
-const int START_SPEED_FORWARD = 170;
+const int MIN_SPEED_FORWARD = 160; // minimum speed to prevent stalling
+const int START_SPEED_FORWARD = 190;
 const int MIN_SPEED_BACKWARD = 180; // minimum speed to prevent stalling
 const int START_SPEED_BACKWARD = 210; // speed to start the wheels at
-const float TRIM_FORWARD = 0.86;
-const float TRIM_BACKWARD = 1.0;
-const float CORRECTION_GAIN = -1.0;
+const float TRIM_FORWARD = 0.86; // .86, increasing will make it go right
+const float TRIM_BACKWARD = 0.93; // increasing will make it go right
+const float CORRECTION_GAIN = 0;
 const float MAX_CORRECTION = 15.0; // maximum correction to apply to the speed of the faster wheel
 const int CONTROL_INTERVAL = 20; // interval in milliseconds to check and adjust the speed of the wheels
 const int RAMP_PULSES = 15; // number of pulses to ramp up the speed of the wheels
@@ -64,14 +64,14 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Bluetooth connected!");
   startTime = millis();
-  delay(2000);
+  //delay(2000);
 }
 
 void loop() {
   if(!done){
-    driveStraight(true, 400);
+    driveStraight(true, 200);
     delay(2000);
-    driveStraight(false, 400);
+    driveStraight(false, 200);
     delay(2000);
     done = true;
   }else{
@@ -181,6 +181,7 @@ void driveStraight(bool forward, float distance){
       long diff = pulsesA - pulsesB;
       float correction = diff * CORRECTION_GAIN;
       correction = constrain(correction, -MAX_CORRECTION, MAX_CORRECTION);
+      
       int leftSpeed;
       int rightSpeed;
       if (forward) {
