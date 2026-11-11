@@ -37,6 +37,7 @@ const int CONTROL_INTERVAL = 20; // interval in milliseconds to check and adjust
 const int RAMP_PULSES = 15; // number of pulses to ramp up the speed of the wheels
 const int DRIVE_SPEED_FORWARD = 190; // speed to drive the wheels at
 const int DRIVE_SPEED_BACKWARD = 210;
+const int TURN_SPEED = 200; // speed to turn the wheels at
 
 bool done = false;
 
@@ -47,6 +48,7 @@ void resetCounters();
 void stopBothMotors();
 void setMotors(int leftSpeed, int rightSpeed, bool forward);
 void driveStraight(bool forward, float distance);
+void turn90(bool right);
 
 // const int MAX_SPEED = 0;
 // read the wheels rpm, and correct the faster one to the slower one
@@ -72,6 +74,10 @@ void loop() {
     driveStraight(true, 200);
     delay(2000);
     driveStraight(false, 200);
+    delay(2000);
+    turn90(true);
+    delay(2000);
+    turn90(false);
     delay(2000);
     done = true;
   }else{
@@ -217,5 +223,20 @@ void wheelCounterB() {
     startTimeB = micros();
     pulse_counterB++;
     RPM_counterB++;
+  }
+}
+
+void turn90(bool right) {
+  resetCounters();
+  if(right){
+    analogWrite(motor_LB, 0);
+    analogWrite(motor_RB, TURN_SPEED);
+    analogWrite(motor_LF, TURN_SPEED);
+    analogWrite(motor_RF, 0);
+  } else {
+    analogWrite(motor_LB, TURN_SPEED);
+    analogWrite(motor_RB, 0);
+    analogWrite(motor_LF, 0);
+    analogWrite(motor_RF, TURN_SPEED);
   }
 }
