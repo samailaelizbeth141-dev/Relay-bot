@@ -25,14 +25,23 @@ volatile unsigned long RPM_counterA = 0;
 volatile unsigned long RPM_counterB = 0;
 volatile unsigned long pulse_counterA = 0;
 volatile unsigned long pulse_counterB = 0;
-const float CORRECTION_GAIN = 1.0;
-const float LEFT_TRIM = 0.8;
+
+const int WHEEL_DIAMETER = 6; // in cm
+const int PULSES_PER_REVOLUTION = 20; // number of pulses per revolution of the wheel
+const int MIN_SPEED = 130; // minimum speed to prevent stalling
+const float TRIM_FORWARD = 0.86;
+const float TRIM_BACKWARD = 0.86;
+const float CORRECTION_GAIN = 0.0;
+const float MAX_CORRECTION = 15.0; // maximum correction to apply to the speed of the faster wheel
+const int CONTROL_INTERVAL = 20; // interval in milliseconds to check and adjust the speed of the wheels
+const int RAMP_PULSES = 15; // number of pulses to ramp up the speed of the wheels
 
 void RPM_Calc();
 void goBothForward(int speed);
 void wheelCounterA();
 void wheelCounterB();
-
+void resetCounters();
+void stopBothMotors();
 
 // const int MAX_SPEED = 0;
 // read the wheels rpm, and correct the faster one to the slower one
@@ -41,8 +50,8 @@ void setup() {
   pinMode(motor_LF, OUTPUT);
   pinMode(motor_RB, OUTPUT);
   pinMode(motor_RF, OUTPUT);
-  pinMode(RPM_1, INPUT);
-  pinMode(RPM_2, INPUT);
+  pinMode(RPM_1, INPUT_PULLUP);
+  pinMode(RPM_2, INPUT_PULLUP);
 
   attachInterrupt(digitalPinToInterrupt(RPM_1), wheelCounterA, RISING);
   attachInterrupt(digitalPinToInterrupt(RPM_2), wheelCounterB, RISING);
@@ -117,7 +126,23 @@ void goBothForward(int speed) {
   analogWrite(motor_RF, speedB);
 }
 
+void resetCounters() {
+  noInterrupts();
+  pulse_counterA = 0;
+  pulse_counterB = 0;
+  interrupts();
+}
+
+void stopBothMotors() {
+  analogWrite(motor_LF, 0);
+  analogWrite(motor_RF, 0);
+  analogWrite(motor_LB, 0);
+  analogWrite(motor_RB, 0);
+}
 void wheelCounterA() {
+  if(digitalRead(RPM_1) == LOW) {
+    return;
+  }
   if (micros() - startTimeA > WHEEL_A_INTERVAL) {
     startTimeA = micros();
     pulse_counterA++;
@@ -126,6 +151,9 @@ void wheelCounterA() {
 }
 
 void wheelCounterB() {
+  if(digitalRead(RPM_2) == LOW) {
+    return;
+  }
   if (micros() - startTimeB > WHEEL_B_INTERVAL) {
     startTimeB = micros();
     pulse_counterB++;
