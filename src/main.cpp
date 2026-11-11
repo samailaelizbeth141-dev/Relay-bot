@@ -16,9 +16,6 @@ unsigned long startTime = 0;
 unsigned long startTimeA = 0;
 unsigned long startTimeB = 0;
 
-int speedA = 0;
-int speedB = 0;
-
 float RPM_A = 0;
 float RPM_B = 0;
 volatile unsigned long RPM_counterA = 0;
@@ -26,22 +23,27 @@ volatile unsigned long RPM_counterB = 0;
 volatile unsigned long pulse_counterA = 0;
 volatile unsigned long pulse_counterB = 0;
 
-const int WHEEL_DIAMETER = 6; // in cm
+const float WHEEL_DIAMETER = 6; // in cm
 const int PULSES_PER_REVOLUTION = 20; // number of pulses per revolution of the wheel
 const int MIN_SPEED = 130; // minimum speed to prevent stalling
+const int START_SPEED = 150; // speed to start the wheels at
 const float TRIM_FORWARD = 0.86;
 const float TRIM_BACKWARD = 0.86;
 const float CORRECTION_GAIN = 0.0;
 const float MAX_CORRECTION = 15.0; // maximum correction to apply to the speed of the faster wheel
 const int CONTROL_INTERVAL = 20; // interval in milliseconds to check and adjust the speed of the wheels
 const int RAMP_PULSES = 15; // number of pulses to ramp up the speed of the wheels
+const int DRIVE_SPEED = 190; // speed to drive the wheels at
+
+bool done = false;
 
 void RPM_Calc();
-void goBothForward(int speed);
 void wheelCounterA();
 void wheelCounterB();
 void resetCounters();
 void stopBothMotors();
+void setMotors(int leftSpeed, int rightSpeed, bool forward);
+void driveStraight(bool forward, float distance);
 
 // const int MAX_SPEED = 0;
 // read the wheels rpm, and correct the faster one to the slower one
@@ -59,11 +61,19 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Bluetooth connected!");
   startTime = millis();
+  delay(2000);
 }
 
 void loop() {
-  goBothForward(190);
-  RPM_Calc();
+  if(!done){
+    driveStraight(true, 100);
+    delay(2000);
+    driveStraight(false, 100);
+    delay(2000);
+    done = true;
+  }else{
+    stopBothMotors();
+  }
 }
 
 void RPM_Calc() {
@@ -91,41 +101,6 @@ void RPM_Calc() {
   }
 }
 
-void goBothForward(int speed) {
-  int baseLeft = speed * LEFT_TRIM;
-  noInterrupts();
-  long temp1 = pulse_counterA;
-  long temp2 = pulse_counterB;
-
-  interrupts();
-
-  long diff = 0;
-  if(temp1 > temp2) {
-    diff = temp1 - temp2;
-    int correction = diff * CORRECTION_GAIN;
-    speedA = baseLeft - correction;
-    speedB = speed + correction;
-  }else{
-    diff = temp2 - temp1;
-    int correction = diff * CORRECTION_GAIN;
-    speedA = baseLeft + correction;
-    speedB = speed - correction;
-  }
-  if (millis() - startTime > 200) {
-    Serial.print("Pulse A: ");
-    Serial.print(temp1);
-    Serial.print(" Pulse B: ");
-    Serial.print(temp2);
-    Serial.print(" Diff: ");
-    Serial.println(diff);
-    startTime = millis();
-  }
-  speedA = constrain(speedA, 130, speed);
-  speedB = constrain(speedB, 130, speed);
-  analogWrite(motor_LF, speedA);
-  analogWrite(motor_RF, speedB);
-}
-
 void resetCounters() {
   noInterrupts();
   pulse_counterA = 0;
@@ -138,6 +113,65 @@ void stopBothMotors() {
   analogWrite(motor_RF, 0);
   analogWrite(motor_LB, 0);
   analogWrite(motor_RB, 0);
+}
+
+void setMotors(int leftSpeed, int rightSpeed, bool forward) {
+  if(forward) {
+    analogWrite(motor_LB, 0);
+    analogWrite(motor_RB, 0);
+    analogWrite(motor_LF, leftSpeed);
+    analogWrite(motor_RF, rightSpeed);
+  } else {
+    analogWrite(motor_LF, 0);
+    analogWrite(motor_RF, 0);
+    analogWrite(motor_LB, leftSpeed);
+    analogWrite(motor_RB, rightSpeed);
+  }
+}
+
+void driveStraight(bool forward, float distance){
+  resetCounters();
+  float circumference = PI * WHEEL_DIAMETER;
+  long targetPulses = (distance / circumference) * PULSES_PER_REVOLUTION;
+  float trim = forward ? TRIM_FORWARD : TRIM_BACKWARD;
+  unsigned long lastControlTime = millis();
+
+  while(true){
+    if(millis() - lastControlTime >= CONTROL_INTERVAL){
+      lastControlTime = millis();
+      noInterrupts();
+
+      long pulsesA = pulse_counterA;
+      long pulsesB = pulse_counterB;
+
+      interrupts();
+
+      long average = (pulsesA + pulsesB) / 2;
+      if(average >= targetPulses){
+        stopBothMotors();
+        return;
+      }
+      float base = DRIVE_SPEED;
+      if(average < RAMP_PULSES){
+        base = START_SPEED + (DRIVE_SPEED - START_SPEED) * (average / (float)RAMP_PULSES);
+      }
+
+      long remaining = targetPulses - average;
+
+      if (remaining < RAMP_PULSES) {
+        base = MIN_SPEED + (DRIVE_SPEED - MIN_SPEED) * (remaining / (float)RAMP_PULSES);
+      }
+
+      long diff = pulsesA - pulsesB;
+      float correction = diff * CORRECTION_GAIN;
+      correction = constrain(correction, -MAX_CORRECTION, MAX_CORRECTION);
+      int leftSpeed = base * trim - correction;
+      int rightSpeed = base + correction;
+      leftSpeed = constrain(leftSpeed, 0, 255);
+      rightSpeed = constrain(rightSpeed, 0, 255);
+      setMotors(leftSpeed, rightSpeed, forward);
+    }
+  }
 }
 void wheelCounterA() {
   if(digitalRead(RPM_1) == LOW) {
