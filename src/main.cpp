@@ -15,6 +15,7 @@ const unsigned long WHEEL_B_INTERVAL = 8000;
 unsigned long startTime = 0;
 unsigned long startTimeA = 0;
 unsigned long startTimeB = 0;
+unsigned long startTurningTime = 0;
 
 float RPM_A = 0;
 float RPM_B = 0;
@@ -24,6 +25,9 @@ volatile unsigned long pulse_counterA = 0;
 volatile unsigned long pulse_counterB = 0;
 
 const float WHEEL_DIAMETER = 6; // in cm
+const float WHEEL_WIDTH = 9;
+const float TURN_FACTOR_RIGHT = 4;      // tune: bigger = turns more, smaller = turns less
+const float TURN_FACTOR_LEFT  = 4;
 const int PULSES_PER_REVOLUTION = 20; // number of pulses per revolution of the wheel
 const int MIN_SPEED_FORWARD = 160; // minimum speed to prevent stalling
 const int START_SPEED_FORWARD = 190;
@@ -39,6 +43,8 @@ const int DRIVE_SPEED_FORWARD = 190; // speed to drive the wheels at
 const int DRIVE_SPEED_BACKWARD = 210;
 const int TURN_SPEED = 200; // speed to turn the wheels at
 
+const unsigned long TURN_TIMEOUT = 2000;
+
 bool done = false;
 
 void RPM_Calc();
@@ -48,7 +54,7 @@ void resetCounters();
 void stopBothMotors();
 void setMotors(int leftSpeed, int rightSpeed, bool forward);
 void driveStraight(bool forward, float distance);
-void turn90(bool right);
+void rotate(bool right, float angle);
 
 // const int MAX_SPEED = 0;
 // read the wheels rpm, and correct the faster one to the slower one
@@ -66,19 +72,21 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Bluetooth connected!");
   startTime = millis();
+  startTurningTime = millis();
   //delay(2000);
 }
 
 void loop() {
   if(!done){
+    /*
     driveStraight(true, 200);
     delay(2000);
     driveStraight(false, 200);
     delay(2000);
-    turn90(true);
-    delay(2000);
-    turn90(false);
-    delay(2000);
+    */
+    rotate(true, 90);
+    delay(5000);
+    rotate(false, 90);
     done = true;
   }else{
     stopBothMotors();
@@ -226,17 +234,50 @@ void wheelCounterB() {
   }
 }
 
-void turn90(bool right) {
+void rotate(bool right, float angle) {
   resetCounters();
-  if(right){
+
+  float factor = right ? TURN_FACTOR_RIGHT : TURN_FACTOR_LEFT;
+  long target = (WHEEL_WIDTH * angle / 360) / WHEEL_DIAMETER * PULSES_PER_REVOLUTION * factor + 0.5;
+
+  if(right){  
     analogWrite(motor_LB, 0);
     analogWrite(motor_RB, TURN_SPEED);
     analogWrite(motor_LF, TURN_SPEED);
     analogWrite(motor_RF, 0);
+    
   } else {
     analogWrite(motor_LB, TURN_SPEED);
     analogWrite(motor_RB, 0);
     analogWrite(motor_LF, 0);
     analogWrite(motor_RF, TURN_SPEED);
   }
+
+  unsigned long start = millis();
+  bool leftDone = false;
+  bool rightDone = false;
+
+  while (!(leftDone && rightDone)) {
+    noInterrupts();
+    long a = pulse_counterA;
+    long b = pulse_counterB;
+    interrupts();
+
+    if(!leftDone && a >= target) {
+      analogWrite(motor_LF, 0);
+      analogWrite(motor_LB, 0);
+      leftDone = true;
+    }
+    if(!rightDone && b >= target) {
+      analogWrite(motor_RF, 0);
+      analogWrite(motor_RB, 0);
+      rightDone = true;
+    }
+
+    if (millis()- start > TURN_TIMEOUT) {
+      Serial.println("turn timeout");
+      break;
+    }
+  }
+  stopBothMotors();
 }
