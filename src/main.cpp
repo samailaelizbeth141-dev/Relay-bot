@@ -42,6 +42,7 @@ const int RAMP_PULSES = 15; // number of pulses to ramp up the speed of the whee
 const int DRIVE_SPEED_FORWARD = 190; // speed to drive the wheels at
 const int DRIVE_SPEED_BACKWARD = 210;
 const int TURN_SPEED = 200; // speed to turn the wheels at
+const bool DRY_RUN = true; // set to true to test the code without moving the robot
 
 const unsigned long TURN_TIMEOUT = 2000;
 
@@ -94,8 +95,6 @@ void loop() {
     delay(5000);
     rotate(false, 90);
     done = true;
-  }else{
-    stopBothMotors();
   }
 }
 
@@ -273,6 +272,14 @@ void rotate(bool right, float angle) {
 void setWheels(int left, int right){
   left = constrain(left, -255, 255);
   right = constrain(right, -255, 255);
+
+  if(DRY_RUN) {
+    Serial.print("wheels Left: ");
+    Serial.print(left);
+    Serial.print(" Right: ");
+    Serial.println(right);
+    return;
+  }
 
   if(left > 0){
     analogWrite(motor_LF, left);
