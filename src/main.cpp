@@ -43,10 +43,20 @@ const int DRIVE_SPEED_FORWARD = 190; // speed to drive the wheels at
 const int DRIVE_SPEED_BACKWARD = 210;
 const int TURN_SPEED = 200; // speed to turn the wheels at
 const bool DRY_RUN = true; // set to true to test the code without moving the robot
-
+const unsigned long CAL_SETTLE_MS = 300; // time to wait for the robot to settle after calibration
+const unsigned long CAL_MEASURE_MS = 1500; // time to measure the calibration after settling
+const unsigned long CAL_COAST_MS = 300; // time to coast after calibration
 const unsigned long TURN_TIMEOUT = 2000;
+const int CAL_RUNS = 3; // number of runs to average for calibration
+const float P0_FORWARD = 120;
+const float P0_BACKWARD = 140;
 
-
+struct RunResult{
+  long leftPulses;
+  long rightPulses;
+  long runOutLeft;
+  long runOutRight; 
+};
 
 bool done = false;
 
@@ -62,6 +72,9 @@ void setMotors(int leftSpeed, int rightSpeed, bool forward);
 void driveStraight(bool forward, float distance);
 void rotate(bool right, float angle);
 void setWheels(int left, int right);
+RunResult measureRun(int leftSpeed, int rightSpeed);
+void calibrate();
+float computeTrim(float trim, long leftPulses, long rightPulses, int driveSpeed, float p0);
 
 // const int MAX_SPEED = 0;
 // read the wheels rpm, and correct the faster one to the slower one
@@ -90,10 +103,12 @@ void loop() {
     delay(2000);
     driveStraight(false, 200);
     delay(2000);
-    */
+    
     rotate(true, 90);
     delay(5000);
     rotate(false, 90);
+    done = true;*/
+    
     done = true;
   }
 }
@@ -302,4 +317,105 @@ void setWheels(int left, int right){
     analogWrite(motor_RF, 0);
     analogWrite(motor_RB, 0);
   }
+}
+
+RunResult measureRun(int leftSpeed, int rightSpeed){
+  RunResult result;
+  setWheels(leftSpeed, rightSpeed);
+  delay(CAL_SETTLE_MS);
+  resetCounters();
+  delay(CAL_MEASURE_MS);
+
+  noInterrupts();
+  result.leftPulses = pulse_counterA;
+  result.rightPulses = pulse_counterB;
+  interrupts();
+
+  setWheels(0, 0);
+  resetCounters();
+  delay(CAL_COAST_MS);
+
+  noInterrupts();
+  result.runOutLeft = pulse_counterA;
+  result.runOutRight = pulse_counterB;
+  interrupts();
+
+  return result;
+}
+
+void calibrate(){
+  const float TRIM_MIN = 0.6;
+  const float TRIM_MAX = 1.0;
+
+  for(int i = 0; i < CAL_RUNS; i++){
+    int leftSpeedF = DRIVE_SPEED_FORWARD * trimForward;
+    int rightSpeedF = DRIVE_SPEED_FORWARD;
+    RunResult resultF = measureRun(leftSpeedF, rightSpeedF);
+    delay(500);
+    if(resultF.leftPulses == 0 ||  resultF.rightPulses == 0){
+      Serial.println("Error: No pulses detected during calibration.");
+      return;
+    }
+
+    float leftTrimNewF = computeTrim(trimForward, resultF.leftPulses, resultF.rightPulses, DRIVE_SPEED_FORWARD, P0_FORWARD);
+    if(leftTrimNewF < TRIM_MIN || leftTrimNewF > TRIM_MAX){
+      Serial.println("Error: Trim value out of bounds during calibration.");
+      Serial.println("leftTrimNewF: " + String(leftTrimNewF, 4));
+      return;
+    }
+    trimForward = leftTrimNewF;
+    int leftSpeedB = -(DRIVE_SPEED_BACKWARD * trimBackward);
+    int rightSpeedB = -(DRIVE_SPEED_BACKWARD);
+    RunResult resultB = measureRun(leftSpeedB, rightSpeedB);
+    delay(500);
+    if(resultB.leftPulses == 0 ||  resultB.rightPulses == 0){
+      Serial.println("Error: No pulses detected during calibration.");
+      return;
+    }
+    float leftTrimNewB = computeTrim(trimBackward, resultB.leftPulses, resultB.rightPulses, DRIVE_SPEED_BACKWARD, P0_BACKWARD);
+    if(leftTrimNewB < TRIM_MIN || leftTrimNewB > TRIM_MAX){
+      Serial.println("Error: Trim value out of bounds during calibration.");
+      Serial.println("leftTrimNewB: " + String(leftTrimNewB, 4));
+      return;
+    }
+    trimBackward = leftTrimNewB;
+    Serial.print("Calibration run ");
+    Serial.print(i + 1);
+    Serial.print("F L/R: ");
+    Serial.print(resultF.leftPulses);
+    Serial.print("/");
+    Serial.println(resultF.rightPulses);
+    Serial.print("B L/R: ");
+    Serial.print(resultB.leftPulses);
+    Serial.print("/");
+    Serial.println(resultB.rightPulses);
+    Serial.print("Trim forward: ");
+    Serial.println(trimForward, 4);
+    Serial.print("Trim backward: ");
+    Serial.println(trimBackward, 4);
+  }
+  RunResult turnR = measureRun(TURN_SPEED, -TURN_SPEED);
+  delay(500);
+  RunResult turnL = measureRun(-TURN_SPEED, TURN_SPEED);
+  delay(500);
+  Serial.print("Turn right L/R: ");
+  Serial.print(turnR.runOutLeft);
+  Serial.print("/");
+  Serial.println(turnR.runOutRight);
+  Serial.print("Turn left L/R: ");
+  Serial.print(turnL.runOutLeft);
+  Serial.print("/");
+  Serial.println(turnL.runOutRight);
+}
+
+float computeTrim(float trim, long leftPulses, long rightPulses, int driveSpeed, float p0){
+  long diff = abs(leftPulses - rightPulses);
+  if(diff <= 1){
+    return trim;
+  }
+  float pwmL = driveSpeed * trim;
+  float r = (float)rightPulses / leftPulses;
+  float newPwmL = p0 +(pwmL - p0) * r;
+  float newTrim = newPwmL / driveSpeed;
+  return newTrim;
 }
