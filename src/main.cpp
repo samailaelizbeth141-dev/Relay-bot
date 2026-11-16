@@ -4,6 +4,7 @@
 #define motor_LF 11 // left forward
 #define motor_RB 5 // right back
 #define motor_RF 9 // right forward
+#define BUTTON_PIN 7
 
 #define RPM_1 3
 #define RPM_2 2
@@ -47,9 +48,12 @@ const unsigned long CAL_SETTLE_MS = 300; // time to wait for the robot to settle
 const unsigned long CAL_MEASURE_MS = 1500; // time to measure the calibration after settling
 const unsigned long CAL_COAST_MS = 300; // time to coast after calibration
 const unsigned long TURN_TIMEOUT = 2000;
+const unsigned long DRIVE_TIMEOUT = 5000;
 const int CAL_RUNS = 3; // number of runs to average for calibration
 const float P0_FORWARD = 120;
 const float P0_BACKWARD = 140;
+const unsigned long DEBOUNCE_MS = 30;
+const unsigned long LONG_PRESS_MS = 1000;
 
 struct RunResult{
   long leftPulses;
@@ -57,8 +61,9 @@ struct RunResult{
   long runOutLeft;
   long runOutRight; 
 };
-
-bool done = false;
+enum RobotState {IDLE, CALIBRATING,RUNNING};
+RobotState state = IDLE;
+enum ButtonPress {PRESS_NONE, PRESS_SHORT, PRESS_LONG};
 
 float trimForward = TRIM_FORWARD;
 float trimBackward = TRIM_BACKWARD;
@@ -75,6 +80,7 @@ void setWheels(int left, int right);
 RunResult measureRun(int leftSpeed, int rightSpeed);
 void calibrate();
 float computeTrim(float trim, long leftPulses, long rightPulses, int driveSpeed, float p0);
+ButtonPress readButton();
 
 // const int MAX_SPEED = 0;
 // read the wheels rpm, and correct the faster one to the slower one
@@ -85,6 +91,7 @@ void setup() {
   pinMode(motor_RF, OUTPUT);
   pinMode(RPM_1, INPUT_PULLUP);
   pinMode(RPM_2, INPUT_PULLUP);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   attachInterrupt(digitalPinToInterrupt(RPM_1), wheelCounterA, RISING);
   attachInterrupt(digitalPinToInterrupt(RPM_2), wheelCounterB, RISING);
@@ -93,23 +100,41 @@ void setup() {
   Serial.println("Bluetooth connected!");
   startTime = millis();
   startTurningTime = millis();
+  Serial.println("IDLE: short = run, long = calibrate");
   //delay(2000);
 }
 
 void loop() {
-  if(!done){
-    /*
-    driveStraight(true, 200);
+  switch (state)
+  {
+  case IDLE:{
+    ButtonPress press = readButton();
+    if(press == PRESS_LONG){
+      state = CALIBRATING;
+      Serial.println("-> CALIBRATING");
+    }
+    else if(press == PRESS_SHORT){
+      state = RUNNING;
+      Serial.println("-> RUNNING");
+    }
+    break;
+  }
+  case CALIBRATING:
     delay(2000);
-    driveStraight(false, 200);
+    calibrate();
+    state = IDLE;
+    Serial.println("-> IDLE");
+    break;
+  case RUNNING:
     delay(2000);
-    
-    rotate(true, 90);
-    delay(5000);
-    rotate(false, 90);
-    done = true;*/
-    
-    done = true;
+    driveStraight(true, 100);
+    delay(1000);
+    driveStraight(false, 100);
+    state = IDLE;
+    Serial.println("-> IDLE");
+    break;
+  default:
+    break;
   }
 }
 
@@ -165,6 +190,11 @@ void driveStraight(bool forward, float distance){
   unsigned long lastControlTime = millis();
 
   while(true){
+    if(millis()- driveStart > DRIVE_TIMEOUT){
+      Serial.println("Drive timeout");
+      stopBothMotors();
+      return;
+    }
     if(millis() - lastControlTime >= CONTROL_INTERVAL){
       lastControlTime = millis();
       noInterrupts();
@@ -418,4 +448,22 @@ float computeTrim(float trim, long leftPulses, long rightPulses, int driveSpeed,
   float newPwmL = p0 +(pwmL - p0) * r;
   float newTrim = newPwmL / driveSpeed;
   return newTrim;
+}
+
+ButtonPress readButton(){
+  if(digitalRead(BUTTON_PIN) == HIGH){
+    return PRESS_NONE;
+  }
+  delay(DEBOUNCE_MS);
+  if(digitalRead(BUTTON_PIN) == HIGH){
+    return PRESS_NONE;
+  }
+  unsigned long pressStart = millis();
+  while (digitalRead(BUTTON_PIN) == LOW){}
+  unsigned long pressTime = millis() - pressStart;
+  delay(DEBOUNCE_MS);
+  if(pressTime >= LONG_PRESS_MS){
+    return PRESS_LONG;
+  }
+  return PRESS_SHORT;
 }
