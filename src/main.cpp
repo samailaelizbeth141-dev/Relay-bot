@@ -45,7 +45,12 @@ const int TURN_SPEED = 200; // speed to turn the wheels at
 
 const unsigned long TURN_TIMEOUT = 2000;
 
+
+
 bool done = false;
+
+float trimForward = TRIM_FORWARD;
+float trimBackward = TRIM_BACKWARD;
 
 void RPM_Calc();
 void wheelCounterA();
@@ -55,6 +60,7 @@ void stopBothMotors();
 void setMotors(int leftSpeed, int rightSpeed, bool forward);
 void driveStraight(bool forward, float distance);
 void rotate(bool right, float angle);
+void setWheels(int left, int right);
 
 // const int MAX_SPEED = 0;
 // read the wheels rpm, and correct the faster one to the slower one
@@ -126,23 +132,14 @@ void resetCounters() {
 }
 
 void stopBothMotors() {
-  analogWrite(motor_LF, 0);
-  analogWrite(motor_RF, 0);
-  analogWrite(motor_LB, 0);
-  analogWrite(motor_RB, 0);
+  setWheels(0, 0);
 }
 
 void setMotors(int leftSpeed, int rightSpeed, bool forward) {
   if(forward) {
-    analogWrite(motor_LB, 0);
-    analogWrite(motor_RB, 0);
-    analogWrite(motor_LF, leftSpeed);
-    analogWrite(motor_RF, rightSpeed);
+    setWheels(leftSpeed, rightSpeed);
   } else {
-    analogWrite(motor_LF, 0);
-    analogWrite(motor_RF, 0);
-    analogWrite(motor_LB, leftSpeed);
-    analogWrite(motor_RB, rightSpeed);
+    setWheels(-leftSpeed, -rightSpeed);
   }
 }
 
@@ -150,7 +147,7 @@ void driveStraight(bool forward, float distance){
   resetCounters();
   float circumference = PI * WHEEL_DIAMETER;
   long targetPulses = (distance / circumference) * PULSES_PER_REVOLUTION;
-  float trim = forward ? TRIM_FORWARD : TRIM_BACKWARD;
+  float trim = forward ? trimForward : trimBackward;
   unsigned long lastControlTime = millis();
 
   while(true){
@@ -240,18 +237,9 @@ void rotate(bool right, float angle) {
   float factor = right ? TURN_FACTOR_RIGHT : TURN_FACTOR_LEFT;
   long target = (WHEEL_WIDTH * angle / 360) / WHEEL_DIAMETER * PULSES_PER_REVOLUTION * factor + 0.5;
 
-  if(right){  
-    analogWrite(motor_LB, 0);
-    analogWrite(motor_RB, TURN_SPEED);
-    analogWrite(motor_LF, TURN_SPEED);
-    analogWrite(motor_RF, 0);
-    
-  } else {
-    analogWrite(motor_LB, TURN_SPEED);
-    analogWrite(motor_RB, 0);
-    analogWrite(motor_LF, 0);
-    analogWrite(motor_RF, TURN_SPEED);
-  }
+  int leftcmd = right ? TURN_SPEED : -TURN_SPEED;
+  int rightcmd = right ? -TURN_SPEED : TURN_SPEED;
+  setWheels(leftcmd, rightcmd);
 
   unsigned long start = millis();
   bool leftDone = false;
@@ -264,13 +252,13 @@ void rotate(bool right, float angle) {
     interrupts();
 
     if(!leftDone && a >= target) {
-      analogWrite(motor_LF, 0);
-      analogWrite(motor_LB, 0);
+      leftcmd = 0;
+      setWheels(leftcmd, rightcmd);
       leftDone = true;
     }
     if(!rightDone && b >= target) {
-      analogWrite(motor_RF, 0);
-      analogWrite(motor_RB, 0);
+      rightcmd = 0;
+      setWheels(leftcmd, rightcmd);
       rightDone = true;
     }
 
@@ -280,4 +268,31 @@ void rotate(bool right, float angle) {
     }
   }
   stopBothMotors();
+}
+
+void setWheels(int left, int right){
+  left = constrain(left, -255, 255);
+  right = constrain(right, -255, 255);
+
+  if(left > 0){
+    analogWrite(motor_LF, left);
+    analogWrite(motor_LB, 0);
+  }else if(left < 0){
+    analogWrite(motor_LF, 0);
+    analogWrite(motor_LB, -left);
+  }else{
+    analogWrite(motor_LF, 0);
+    analogWrite(motor_LB, 0);
+  }
+
+  if(right > 0){
+    analogWrite(motor_RF, right);
+    analogWrite(motor_RB, 0);
+  }else if(right < 0){
+    analogWrite(motor_RF, 0);
+    analogWrite(motor_RB, -right);
+  }else{
+    analogWrite(motor_RF, 0);
+    analogWrite(motor_RB, 0);
+  }
 }
