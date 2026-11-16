@@ -24,10 +24,10 @@ volatile unsigned long RPM_counterB = 0;
 volatile unsigned long pulse_counterA = 0;
 volatile unsigned long pulse_counterB = 0;
 
-const float WHEEL_DIAMETER = 6; // in cm
-const float WHEEL_WIDTH = 9;
-const float TURN_FACTOR_RIGHT = 4;      // tune: bigger = turns more, smaller = turns less
-const float TURN_FACTOR_LEFT  = 4;
+const float WHEEL_DIAMETER = 7; // in cm 6
+const float WHEEL_WIDTH = 13; // 9
+const float ROTATE_FACTOR_RIGHT = 2.4;      // tune: bigger = turns more, smaller = turns less
+const float ROTATE_FACTOR_LEFT  = 2.4;
 const int PULSES_PER_REVOLUTION = 20; // number of pulses per revolution of the wheel
 const int MIN_SPEED_FORWARD = 160; // minimum speed to prevent stalling
 const int START_SPEED_FORWARD = 190;
@@ -41,9 +41,17 @@ const int CONTROL_INTERVAL = 20; // interval in milliseconds to check and adjust
 const int RAMP_PULSES = 15; // number of pulses to ramp up the speed of the wheels
 const int DRIVE_SPEED_FORWARD = 190; // speed to drive the wheels at
 const int DRIVE_SPEED_BACKWARD = 210;
-const int TURN_SPEED = 200; // speed to turn the wheels at
+const int ROTATE_SPEED = 220; // speed to turn the wheels at
+const int TURN_INNER_SPEED = 160;
+const int TURN_OUTER_SPEED = 220;
+const float TURN_CORRECTION = 3.0;
+const float MAXIMUM_CORRECTION = 40.0;
+const float SLOW_DOWN = 6.0;
+const float TURN_FACTOR_LEFT = 1.0;
+const float TURN_FACTOR_RIGHT = 1.0;
 
-const unsigned long TURN_TIMEOUT = 2000;
+
+const unsigned long TURN_TIMEOUT = 4000;
 
 bool done = false;
 
@@ -55,6 +63,7 @@ void stopBothMotors();
 void setMotors(int leftSpeed, int rightSpeed, bool forward);
 void driveStraight(bool forward, float distance);
 void rotate(bool right, float angle);
+void arcTurn(bool right, float angle, float radius);
 
 // const int MAX_SPEED = 0;
 // read the wheels rpm, and correct the faster one to the slower one
@@ -76,19 +85,43 @@ void setup() {
   //delay(2000);
 }
 
+const float SQUARE_SIDE = 50.0;
+const unsigned long STEP_PAUSE = 500;
 void loop() {
-  if(!done){
-    /*
-    driveStraight(true, 200);
-    delay(2000);
-    driveStraight(false, 200);
-    delay(2000);
-    */
-    rotate(true, 90);
-    delay(5000);
+  if (!done) {
+    delay(2000);  // time to put the robot down
+
+    // 1. forward, then back the same distance
+    driveStraight(true, SQUARE_SIDE);
+    delay(STEP_PAUSE);
+    driveStraight(false, SQUARE_SIDE);
+    delay(STEP_PAUSE);
+
+    // 2. rotate left 90
     rotate(false, 90);
+    delay(STEP_PAUSE);
+
+    // 3. forward to the bottom-left corner
+    driveStraight(true, SQUARE_SIDE);
+    delay(STEP_PAUSE);
+
+    // 4. rotate right 90 -> facing up
+    rotate(true, 90);
+    delay(STEP_PAUSE);
+
+    // 5. right arc to the top-right corner (radius = side of the square)
+    arcTurn(true, 90, SQUARE_SIDE);
+    delay(STEP_PAUSE);
+
+    // 6. rotate right 90 -> facing down
+    rotate(true, 90);
+    delay(STEP_PAUSE);
+
+    // 7. straight back to the start
+    driveStraight(true, SQUARE_SIDE);
+
     done = true;
-  }else{
+  } else {
     stopBothMotors();
   }
 }
@@ -237,20 +270,20 @@ void wheelCounterB() {
 void rotate(bool right, float angle) {
   resetCounters();
 
-  float factor = right ? TURN_FACTOR_RIGHT : TURN_FACTOR_LEFT;
+  float factor = right ? ROTATE_FACTOR_RIGHT : ROTATE_FACTOR_LEFT;
   long target = (WHEEL_WIDTH * angle / 360) / WHEEL_DIAMETER * PULSES_PER_REVOLUTION * factor + 0.5;
 
   if(right){  
     analogWrite(motor_LB, 0);
-    analogWrite(motor_RB, TURN_SPEED);
-    analogWrite(motor_LF, TURN_SPEED);
+    analogWrite(motor_RB, ROTATE_SPEED + 15);
+    analogWrite(motor_LF, ROTATE_SPEED);
     analogWrite(motor_RF, 0);
     
   } else {
-    analogWrite(motor_LB, TURN_SPEED);
+    analogWrite(motor_LB, ROTATE_SPEED);
     analogWrite(motor_RB, 0);
     analogWrite(motor_LF, 0);
-    analogWrite(motor_RF, TURN_SPEED);
+    analogWrite(motor_RF, ROTATE_SPEED + 15);
   }
 
   unsigned long start = millis();
@@ -280,4 +313,115 @@ void rotate(bool right, float angle) {
     }
   }
   stopBothMotors();
+}
+
+void arcTurn(bool right, float angle, float radius) {
+  resetCounters();
+
+  if (angle <= 0) {
+    return;
+  }
+
+  if (radius < WHEEL_WIDTH / 2.0) {
+    Serial.println("Radius too small");
+    return;
+  }
+
+  float factor = right ? TURN_FACTOR_RIGHT : TURN_FACTOR_LEFT;
+
+  // angle in rad
+  float angleRad = angle * PI / 180.0;
+
+  //distance wheel travels
+  float outerDist = angleRad * (radius + WHEEL_WIDTH / 2.0);
+  float innerDist = angleRad * (radius - WHEEL_WIDTH / 2.0);
+
+  // distance - pulses
+  float circumference = PI * WHEEL_DIAMETER;
+  long outerTarget = (outerDist / circumference) * PULSES_PER_REVOLUTION * factor + 0.5;
+  long innerTarget = (innerDist / circumference) * PULSES_PER_REVOLUTION * factor + 0.5;
+
+  float ratio = innerDist / outerDist;
+
+  unsigned long lastControlTime = millis();
+  unsigned long turnStart = millis();
+
+  while(true) {
+    if(millis() - lastControlTime < CONTROL_INTERVAL) {
+      continue;
+    }
+
+    lastControlTime = millis();
+
+    noInterrupts();
+    long pulsesA = pulse_counterA; 
+    long pulsesB = pulse_counterB; 
+    interrupts();
+
+    long outer = right ? pulsesA : pulsesB;
+    long inner = right ? pulsesB : pulsesA;
+
+    if (outer >= outerTarget) {
+      stopBothMotors();
+      break;
+    }
+
+    if (millis()-turnStart >= TURN_TIMEOUT) {
+      break;
+    }
+
+    float outerSpeed = TURN_OUTER_SPEED;
+    long remaining = outerTarget - outer;
+
+    if (remaining < SLOW_DOWN) {
+      outerSpeed = TURN_INNER_SPEED + (TURN_OUTER_SPEED - TURN_INNER_SPEED) * (remaining / SLOW_DOWN);
+    }
+
+    float innerSpeed = outerSpeed * ratio;
+
+    float expectedInner = outer * ratio;
+    float error = expectedInner - inner;
+    float correction = error * TURN_CORRECTION;
+    correction = constrain(correction, -MAXIMUM_CORRECTION, MAXIMUM_CORRECTION);
+
+    innerSpeed += correction;
+    outerSpeed -= correction;
+
+    // limits
+    int innerPWM = constrain(innerSpeed, TURN_INNER_SPEED, 255);
+    int outerPWM = constrain(outerSpeed, TURN_INNER_SPEED, 255);
+    // radius == W/2 -> inner wheel should stand still
+    if (ratio < 0.05) {
+      innerPWM = 0;
+    }
+
+    if (right) {
+      setMotors(outerPWM, innerPWM, true);  
+    } else {
+      setMotors(innerPWM, outerPWM, true);
+    }
+  }
+    
+  stopBothMotors();
+
+  // wait for coasting, then read final counts
+  delay(300);
+  noInterrupts();
+  long finalA = pulse_counterA;
+  long finalB = pulse_counterB;
+  interrupts();
+  long finalOuter = right ? finalA : finalB;
+  long finalInner = right ? finalB : finalA;
+  // debug
+  
+  Serial.print("Outer: ");
+  Serial.print(finalOuter);
+  Serial.print(" / ");
+  Serial.print(outerTarget);
+  Serial.print("  Inner: ");
+  Serial.print(finalInner);
+  Serial.print(" / ");
+  Serial.print(innerTarget);
+  Serial.print("  Ratio: ");
+  Serial.println(ratio);
 }
