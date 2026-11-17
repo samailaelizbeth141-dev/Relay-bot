@@ -24,17 +24,17 @@ volatile unsigned long RPM_counterB = 0;
 volatile unsigned long pulse_counterA = 0;
 volatile unsigned long pulse_counterB = 0;
 
-const float WHEEL_DIAMETER = 7; // in cm 6
-const float WHEEL_WIDTH = 13; // 9
-const float ROTATE_FACTOR_RIGHT = 2.4;      // tune: bigger = turns more, smaller = turns less
-const float ROTATE_FACTOR_LEFT  = 2.4;
+const float WHEEL_DIAMETER = 6; // in cm 7
+const float WHEEL_WIDTH = 9; // 9 13
+const float ROTATE_FACTOR_RIGHT = 3.2;      // tune: bigger = turns more, smaller = turns less
+const float ROTATE_FACTOR_LEFT  = 4.625;
 const int PULSES_PER_REVOLUTION = 20; // number of pulses per revolution of the wheel
 const int MIN_SPEED_FORWARD = 160; // minimum speed to prevent stalling
 const int START_SPEED_FORWARD = 190;
 const int MIN_SPEED_BACKWARD = 180; // minimum speed to prevent stalling
 const int START_SPEED_BACKWARD = 210; // speed to start the wheels at
-const float TRIM_FORWARD = 0.86; // .86, increasing will make it go right
-const float TRIM_BACKWARD = 0.93; // increasing will make it go right
+const float TRIM_FORWARD = 0.87; // .86, increasing will make it go right
+const float TRIM_BACKWARD = 0.90; // increasing will make it go right
 const float CORRECTION_GAIN = 0;
 const float MAX_CORRECTION = 15.0; // maximum correction to apply to the speed of the faster wheel
 const int CONTROL_INTERVAL = 20; // interval in milliseconds to check and adjust the speed of the wheels
@@ -49,9 +49,11 @@ const float MAXIMUM_CORRECTION = 40.0;
 const float SLOW_DOWN = 6.0;
 const float TURN_FACTOR_LEFT = 1.0;
 const float TURN_FACTOR_RIGHT = 1.0;
+const float TURN_RIGHT = 33.7;
+const float TURN_LEFT = 33.5;
 
 
-const unsigned long TURN_TIMEOUT = 4000;
+const unsigned long TURN_TIMEOUT = 8000;
 
 bool done = false;
 
@@ -85,41 +87,43 @@ void setup() {
   //delay(2000);
 }
 
-const float SQUARE_SIDE = 50.0;
-const unsigned long STEP_PAUSE = 500;
+const float SQUARE_SIDE = 150.0;
+const unsigned long STEP_PAUSE = 1500;
 void loop() {
   if (!done) {
     delay(2000);  // time to put the robot down
-
+    
     // 1. forward, then back the same distance
     driveStraight(true, SQUARE_SIDE);
     delay(STEP_PAUSE);
     driveStraight(false, SQUARE_SIDE);
     delay(STEP_PAUSE);
-
+    
     // 2. rotate left 90
     rotate(false, 90);
     delay(STEP_PAUSE);
 
+    
     // 3. forward to the bottom-left corner
     driveStraight(true, SQUARE_SIDE);
     delay(STEP_PAUSE);
-
+    
     // 4. rotate right 90 -> facing up
     rotate(true, 90);
     delay(STEP_PAUSE);
-
+    
+    
     // 5. right arc to the top-right corner (radius = side of the square)
     arcTurn(true, 90, SQUARE_SIDE);
     delay(STEP_PAUSE);
-
+    
     // 6. rotate right 90 -> facing down
     rotate(true, 90);
     delay(STEP_PAUSE);
 
     // 7. straight back to the start
     driveStraight(true, SQUARE_SIDE);
-
+    
     done = true;
   } else {
     stopBothMotors();
@@ -328,13 +332,15 @@ void arcTurn(bool right, float angle, float radius) {
   }
 
   float factor = right ? TURN_FACTOR_RIGHT : TURN_FACTOR_LEFT;
-
+  
   // angle in rad
   float angleRad = angle * PI / 180.0;
+  float width = right ? TURN_RIGHT : TURN_LEFT;
+
 
   //distance wheel travels
-  float outerDist = angleRad * (radius + WHEEL_WIDTH / 2.0);
-  float innerDist = angleRad * (radius - WHEEL_WIDTH / 2.0);
+  float outerDist = angleRad * (radius + width / 2.0);
+  float innerDist = angleRad * (radius - width / 2.0);
 
   // distance - pulses
   float circumference = PI * WHEEL_DIAMETER;
