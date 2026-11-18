@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "Sonar.h"
 
 #define motor_LB 6 // left back
 #define motor_LF 11 // left forward
@@ -76,6 +77,7 @@ void setup() {
   pinMode(motor_RF, OUTPUT);
   pinMode(RPM_1, INPUT_PULLUP);
   pinMode(RPM_2, INPUT_PULLUP);
+  SonarPinSetup();
 
   attachInterrupt(digitalPinToInterrupt(RPM_1), wheelCounterA, RISING);
   attachInterrupt(digitalPinToInterrupt(RPM_2), wheelCounterB, RISING);
@@ -90,7 +92,7 @@ void setup() {
 const float SQUARE_SIDE = 150.0;
 const unsigned long STEP_PAUSE = 1500;
 void loop() {
-  if (!done) {
+  /*if (!done) {
     delay(2000);  // time to put the robot down
     
     // 1. forward, then back the same distance
@@ -127,7 +129,9 @@ void loop() {
     done = true;
   } else {
     stopBothMotors();
-  }
+  }*/
+  Serial.println(SonarDistanceCM());
+  delay(60);
 }
 
 void RPM_Calc() {
