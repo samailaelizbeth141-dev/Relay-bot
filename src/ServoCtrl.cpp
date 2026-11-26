@@ -1,7 +1,7 @@
 #include "ServoCtrl.h"
 
-static const unsigned int SERVO_MIN_US = 1000; // impuls for 0 degres
-static const unsigned int SERVO_MAX_US = 2000; // impuls for 180 degres
+static const unsigned int SERVO_MIN_US = 500; // impuls for 0 degres
+static const unsigned int SERVO_MAX_US = 2400; // impuls for 180 degres
 static const unsigned int SERVO_PULSES = 20;
 
 void ServoPinSetup(uint8_t pin)

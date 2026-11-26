@@ -2,6 +2,7 @@
 #include "Sonar.h"
 #include "ServoCtrl.h"
 #include "Maze.h"
+#include "Scanner.h"
 
 #define motor_LB 6  // left back
 #define motor_LF 11 // left forward
@@ -11,7 +12,6 @@
 #define RPM_1 3
 #define RPM_2 2
 
-#define SONAR_SERVO_PIN 4
 
 const int READ_RPM_INTERVAL = 1000;
 const unsigned long WHEEL_A_INTERVAL = 8000;
@@ -74,6 +74,7 @@ void driveStraight(bool forward, float distance);
 void rotate(bool right, float angle);
 void arcTurn(bool right, float angle, float radius);
 void driveUntilWall();
+void scanWalls();
 
 // const int MAX_SPEED = 0;
 // read the wheels rpm, and correct the faster one to the slower one
@@ -85,9 +86,8 @@ void setup()
   pinMode(motor_RF, OUTPUT);
   pinMode(RPM_1, INPUT_PULLUP);
   pinMode(RPM_2, INPUT_PULLUP);
-  SonarPinSetup();
-  ServoPinSetup(SONAR_SERVO_PIN);
-
+  
+  servoSetup();
   attachInterrupt(digitalPinToInterrupt(RPM_1), wheelCounterA, RISING);
   attachInterrupt(digitalPinToInterrupt(RPM_2), wheelCounterB, RISING);
 
@@ -104,9 +104,17 @@ void loop()
 {
   if (!done)
   {
+    scanWalls();
+    for (int i = 0; i < 4; i++) {
+      Serial.println(scannedDist[i]);
+    }
+
+    /*
     delay(2000);
     driveUntilWall();
     done = true;
+    */
+   done = true;
   }
   else
   {
